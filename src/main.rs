@@ -21,6 +21,9 @@ struct Opts {
     )]
     url: String,
 
+    #[options(help = "chain id", default = "1")]
+    chain_id: u64,
+
     #[options(help = "path to your private key")]
     private_key: PathBuf,
 
@@ -39,20 +42,17 @@ struct Opts {
 
 #[derive(Deserialize)]
 struct Config {
-    #[serde(rename = "Controller")]
-    controller: Address,
-    #[serde(rename = "Liquidations")]
-    liquidations: Address,
-    #[serde(rename = "Uniswap")]
-    uniswap: Address,
+    #[serde(rename = "Cauldron")]
+    cauldron: Address,
+    #[serde(rename = "Witch")]
+    witch: Address,
     #[serde(rename = "Flash")]
     flashloan: Address,
     #[serde(rename = "Multicall")]
     multicall: Option<Address>,
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main_impl() -> anyhow::Result<()> {
     Subscriber::builder()
         .with_env_filter(EnvFilter::from_default_env())
         .init();
@@ -71,10 +71,26 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[tokio::main]
+async fn main() {
+    match main_impl().await {
+        Ok(_) => {
+            println!("Done!");
+            std::process::exit(exitcode::OK);
+        }
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            std::process::exit(exitcode::DATAERR);
+        }
+    };
+}
+
 async fn run<P: JsonRpcClient + 'static>(opts: Opts, provider: Provider<P>) -> anyhow::Result<()> {
-    info!("Starting Yield Liquidator.");
+    info!("Starting Yield-v2 Liquidator.");
     let provider = provider.interval(Duration::from_millis(opts.interval));
-    let wallet: LocalWallet = std::fs::read_to_string(opts.private_key)?.parse()?;
+    let private_key = std::fs::read_to_string(opts.private_key)?.trim().to_string();
+    let wallet: LocalWallet = private_key.parse()?;
+    let wallet = wallet.with_chain_id(opts.chain_id);
     let address = wallet.address();
     let client = SignerMiddleware::new(provider, wallet);
     let client = NonceManagerMiddleware::new(client, address);
@@ -84,9 +100,8 @@ async fn run<P: JsonRpcClient + 'static>(opts: Opts, provider: Provider<P>) -> a
     info!("Node: {}", opts.url);
 
     let cfg: Config = serde_json::from_reader(std::fs::File::open(opts.config)?)?;
-    info!("Controller: {:?}", cfg.controller);
-    info!("Liquidations: {:?}", cfg.liquidations);
-    info!("Uniswap: {:?}", cfg.uniswap);
+    info!("Cauldron: {:?}", cfg.cauldron);
+    info!("Witch: {:?}", cfg.witch);
     info!("Multicall: {:?}", cfg.multicall);
     info!("FlashLiquidator {:?}", cfg.flashloan);
     info!("Persistent data will be stored at: {:?}", opts.file);
@@ -106,9 +121,8 @@ async fn run<P: JsonRpcClient + 'static>(opts: Opts, provider: Provider<P>) -> a
 
     let mut keeper = Keeper::new(
         client,
-        cfg.controller,
-        cfg.liquidations,
-        cfg.uniswap,
+        cfg.cauldron,
+        cfg.witch,
         cfg.flashloan,
         cfg.multicall,
         opts.min_profit,

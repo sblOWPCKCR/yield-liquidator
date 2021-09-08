@@ -14,7 +14,7 @@ pub const WETH: [u8; 32] = [
 ];
 
 // merge & deduplicate the 2 data structs
-pub fn merge<T>(a: Vec<Address>, b: &HashMap<Address, T>) -> Vec<Address> {
+pub fn merge<K:Clone + Ord, T>(a: Vec<K>, b: &HashMap<K, T>) -> Vec<K> {
     let keys = b.keys().cloned().collect::<Vec<_>>();
     let mut all = [a, keys].concat();
     all.sort_unstable();

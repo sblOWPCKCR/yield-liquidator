@@ -1,8 +1,13 @@
-mod controller;
-pub use controller::*;
+mod cauldron;
+pub use cauldron::*;
 
-mod liquidations;
-pub use liquidations::*;
+mod witch;
+pub use witch::*;
 
-mod uniswapv2pair;
-pub use uniswapv2pair::*;
+mod pairflash;
+pub use pairflash::*;
+
+pub type VaultIdType = [u8; 12];
+pub type ArtIdType = [u8; 6];
+pub type InkIdType = [u8; 6];
+pub type SeriesIdType = [u8; 6];

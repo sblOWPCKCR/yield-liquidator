@@ -1,22 +1,26 @@
 use crate::{
-    borrowers::{Borrower, Borrowers},
+    borrowers::{VaultMap, Borrowers},
     escalator::GeometricGasPrice,
-    liquidations::{Auction, Liquidator},
+    liquidations::{AuctionMap, Liquidator},
     Result,
 };
 
 use ethers::prelude::*;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 use std::{collections::HashMap, io::Write, path::PathBuf, sync::Arc};
-use tracing::debug_span;
+use tracing::{debug_span};
 
+#[serde_as]
 #[derive(Serialize, Deserialize, Default)]
 /// The state which is stored in our logs
 pub struct State {
     /// The auctions being monitored
-    auctions: HashMap<Address, Auction>,
+    #[serde_as(as = "Vec<(_, _)>")]
+    auctions: AuctionMap,
     /// The borrowers being monitored
-    borrowers: HashMap<Address, Borrower>,
+    #[serde_as(as = "Vec<(_, _)>")]
+    vaults: VaultMap,
     /// The last observed block
     last_block: u64,
 }
@@ -38,27 +42,26 @@ impl<M: Middleware> Keeper<M> {
         client: Arc<M>,
         controller: Address,
         liquidations: Address,
-        uniswap: Address,
         flashloan: Address,
         multicall: Option<Address>,
         min_profit: U256,
         gas_escalator: GeometricGasPrice,
         state: Option<State>,
     ) -> Result<Keeper<M>, M> {
-        let (borrowers, vaults, last_block) = match state {
-            Some(state) => (state.borrowers, state.auctions, state.last_block.into()),
+        let (vaults, auctions, last_block) = match state {
+            Some(state) => (state.vaults, state.auctions, state.last_block.into()),
             None => (HashMap::new(), HashMap::new(), 0.into()),
         };
 
-        let borrowers = Borrowers::new(controller, multicall, client.clone(), borrowers).await;
+        let borrowers = Borrowers::new(controller, liquidations, multicall, client.clone(), vaults).await;
         let liquidator = Liquidator::new(
+            controller,
             liquidations,
-            uniswap,
             flashloan,
             multicall,
             min_profit,
             client.clone(),
-            vaults,
+            auctions,
             gas_escalator,
         )
         .await;
@@ -137,19 +140,18 @@ impl<M: Middleware> Keeper<M> {
 
         // 2. update our dataset with the new block's data
         self.borrowers
-            .update_borrowers(self.last_block, block_number)
+            .update_vaults(self.last_block, block_number)
             .await?;
 
         // 3. trigger the auction for any undercollateralized borrowers
         self.liquidator
-            .trigger_liquidations(self.borrowers.borrowers.iter(), gas_price)
+            .trigger_liquidations(self.borrowers.vaults.iter(), gas_price)
             .await?;
 
         // 4. try buying the ones which are worth buying
         self.liquidator
             .buy_opportunities(self.last_block, block_number, gas_price)
             .await?;
-
         Ok(())
     }
 
@@ -158,7 +160,7 @@ impl<M: Middleware> Keeper<M> {
             w,
             &State {
                 auctions: self.liquidator.auctions.clone(),
-                borrowers: self.borrowers.borrowers.clone(),
+                vaults: self.borrowers.vaults.clone(),
                 last_block: self.last_block.as_u64(),
             },
         )
