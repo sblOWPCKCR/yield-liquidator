@@ -34,8 +34,8 @@ pub struct Liquidator<M> {
     /// our RPC endpoint
     multicall: Multicall<M>,
 
-    /// The minimum profit to be extracted per liquidation
-    min_profit: U256,
+    /// The minimum ratio (collateral/debt) to trigger liquidation
+    min_ratio: u16,
 
     pending_liquidations: HashMap<VaultIdType, PendingTransaction>,
     pending_auctions: HashMap<VaultIdType, PendingTransaction>,
@@ -50,10 +50,14 @@ type PendingTransaction = (TypedTransaction, TxHash, Instant);
 pub struct Auction {
     /// The start time of the auction
     started: u32,
+    under_auction: bool,
     /// The debt which can be repaid
     debt: u128,
     /// The collateral which can be seized
     collateral: u128,
+
+    ratio_pct: u16,
+    is_at_minimal_price: bool,
 
     debt_id: ArtIdType,
     collateral_id: InkIdType,
@@ -85,7 +89,7 @@ impl<M: Middleware> Liquidator<M> {
         liquidator: Address,
         flashloan: Address,
         multicall: Option<Address>,
-        min_profit: U256,
+        min_ratio: u16,
         client: Arc<M>,
         auctions: HashMap<VaultIdType, Auction>,
         gas_escalator: GeometricGasPrice,
@@ -99,7 +103,7 @@ impl<M: Middleware> Liquidator<M> {
             liquidator: Witch::new(liquidator, client.clone()),
             pairflash: PairFlash::new(flashloan, client.clone()),
             multicall,
-            min_profit,
+            min_ratio,
             auctions,
 
             pending_liquidations: HashMap::new(),
@@ -209,27 +213,58 @@ impl<M: Middleware> Liquidator<M> {
         };
 
         for vault_id in all_auctions {
-            self.buy(vault_id, Instant::now(), gas_price).await?;
+            let is_still_valid: bool = self.buy(vault_id, Instant::now(), gas_price).await?;
+            if !is_still_valid {
+                self.auctions.remove(&vault_id);
+            }
         }
 
         Ok(())
     }
 
     /// Tries to buy the collateral associated with a user's liquidation auction
-    /// via a flashloan funded by Uniswap's DAI/WETH pair.
-    async fn buy(&mut self, vault_id: VaultIdType, now: Instant, gas_price: U256) -> Result<(), M> {
+    /// via a flashloan funded by Uniswap.
+    ///
+    /// Returns
+    ///  - Result<false>: auction is no longer valid, we need to forget about it
+    ///  - Result<true>: auction is still valid
+    async fn buy(&mut self, vault_id: VaultIdType, now: Instant, gas_price: U256) -> Result<bool, M> {
         // only iterate over users that do not have active auctions
         if let Some(pending_tx) = self.pending_auctions.get(&vault_id) {
             trace!(tx_hash = ?pending_tx.1, vault_id=?vault_id, "bid not confirmed yet");
-            return Ok(());
+            return Ok(true);
         }
 
         // Get the vault's info
         let auction = self.get_auction(vault_id).await?;
+
+        if !auction.under_auction {
+            debug!(vault_id=?vault_id, auction=?auction, "Auction is no longer active");
+            return Ok(false);
+        }
+
         // Skip auctions which do not have any outstanding debt
         if auction.debt == 0 {
             debug!(vault_id=?vault_id, auction=?auction, "Has no debt - skipping");
-            return Ok(());
+            return Ok(true);
+        }
+
+        let mut buy: bool = false;
+        if auction.ratio_pct <= self.min_ratio {
+            debug!(vault_id=?vault_id, auction=?auction,
+                ratio=auction.ratio_pct, ratio_threshold=self.min_ratio,
+                "Ratio threshold is reached, buying");
+            buy = true;
+        }
+        if auction.is_at_minimal_price {
+            debug!(vault_id=?vault_id, auction=?auction,
+                ratio=auction.ratio_pct, ratio_threshold=self.min_ratio,
+                "Is at minimal price, buying");
+            buy = true;
+        }
+        if !buy {
+            debug!(vault_id=?vault_id, auction=?auction, "Not time to buy yet");
+            return Ok(true);
         }
 
         if self.auctions.insert(vault_id, auction.clone()).is_none() {
@@ -267,12 +302,12 @@ impl<M: Middleware> Liquidator<M> {
             }
         };
 
-        Ok(())
+        Ok(true)
     }
 
     /// Triggers liquidations for any vulnerable positions which were fetched from the
     /// controller
-    pub async fn trigger_liquidations(
+    pub async fn start_auctions(
         &mut self,
         vaults: impl Iterator<Item = (&VaultIdType, &Vault)>,
         gas_price: U256,
@@ -296,7 +331,7 @@ impl<M: Middleware> Liquidator<M> {
                 }
                 info!(
                     vault_id = ?vault_id, details = ?vault,
-                    "found undercollateralized vault. triggering liquidation",
+                    "found undercollateralized vault. starting an auction",
                 );
 
                 // Send the tx and track it
@@ -312,7 +347,6 @@ impl<M: Middleware> Liquidator<M> {
                 debug!(vault_id=?vault_id, "Vault is collateralized");
             }
         }
-        debug!("all done");
         Ok(())
     }
 
@@ -328,9 +362,10 @@ impl<M: Middleware> Liquidator<M> {
             .clear_calls()
             .add_call(asset_ids_fn)
             .add_call(balances_fn)
-            .add_call(auction_fn);
+            .add_call(auction_fn)
+            ;
 
-        let ((_, series_id, ilk_id), (art, ink), (_auction_owner, auction_start)):
+        let ((_, series_id, ilk_id), (art, ink), (auction_owner, auction_start)):
             ((Address, SeriesIdType, InkIdType), (u128, u128), (Address, u32)) = multicall.call().await?;
 
         let (_, art_id, _) = self.cauldron.series(series_id).call().await?;
@@ -341,14 +376,29 @@ impl<M: Middleware> Liquidator<M> {
             .clear_calls()
             .add_call(self.cauldron.assets(art_id))
             .add_call(self.cauldron.assets(ilk_id))
+            .add_call(self.pairflash.is_at_minimal_price(vault_id, ilk_id))
+            .add_call(self.pairflash.collateral_to_debt_ratio(vault_id, series_id, art_id, ilk_id, art))
             ;
 
-        let (art_address, ink_address): (Address, Address) = multicall.call().await?;
+        let (art_address, ink_address, is_at_minimal_price, ratio_u256): (Address, Address, bool, U256) = multicall.call().await?;
+
+        let ratio_pct_u256 = ratio_u256 / U256::exp10(16);
+        let ratio_pct: u16 = {
+            if ratio_pct_u256 > U256::from(u16::MAX) {
+                error!(vault_id=?vault_id, ratio_pct_u256=?ratio_pct_u256, "Ratio is too big");
+                0
+            } else {
+                (ratio_pct_u256.as_u64()) as u16
+            }
+        };
 
         Ok(Auction {
+            under_auction: (auction_owner != Address::zero()),
             started: auction_start,
             collateral: ink,
             debt: art,
+            ratio_pct: ratio_pct,
+            is_at_minimal_price: is_at_minimal_price,
             debt_id: art_id,
             collateral_id: ilk_id,
             debt_address: art_address,

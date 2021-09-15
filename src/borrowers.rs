@@ -33,7 +33,7 @@ pub struct Vault {
 
     pub under_auction: bool,
 
-    pub level: f64,
+    pub level: I256,
 
     pub ink: InkIdType,
 
@@ -115,12 +115,11 @@ impl<M: Middleware> Borrowers<M> {
         let (level_int, vault_data, auction_id): (I256, (Address, ArtIdType, InkIdType), (Address, u32)) =
             multicall.call().await?;
 
-        let is_collateralized: bool = level_int.is_positive();
+        let is_collateralized: bool = !level_int.is_negative();
 
-        let level = ((level_int / I256::exp10(16)).as_i128() as f64) / 100.;
         Ok(Vault {
             is_collateralized: is_collateralized,
-                level: level,
+                level: level_int,
                 under_auction: auction_id.0 != Address::zero(),
                 art: vault_data.1,
                 ink: vault_data.2

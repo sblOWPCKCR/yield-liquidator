@@ -33,8 +33,8 @@ struct Opts {
     #[options(help = "the file to be used for persistence", default = "data.json")]
     file: PathBuf,
 
-    #[options(help = "the minimum profit per liquidation", default = "0")]
-    min_profit: U256,
+    #[options(help = "the minimum ratio (collateral/debt) to trigger liquidation, percents", default = "110")]
+    min_ratio: u16,
 
     #[options(help = "the block to start watching from")]
     start_block: Option<u64>,
@@ -125,7 +125,7 @@ async fn run<P: JsonRpcClient + 'static>(opts: Opts, provider: Provider<P>) -> a
         cfg.witch,
         cfg.flashloan,
         cfg.multicall,
-        opts.min_profit,
+        opts.min_ratio,
         gas_escalator,
         state,
     )

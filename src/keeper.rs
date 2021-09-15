@@ -44,7 +44,7 @@ impl<M: Middleware> Keeper<M> {
         liquidations: Address,
         flashloan: Address,
         multicall: Option<Address>,
-        min_profit: U256,
+        min_ratio: u16,
         gas_escalator: GeometricGasPrice,
         state: Option<State>,
     ) -> Result<Keeper<M>, M> {
@@ -59,7 +59,7 @@ impl<M: Middleware> Keeper<M> {
             liquidations,
             flashloan,
             multicall,
-            min_profit,
+            min_ratio,
             client.clone(),
             auctions,
             gas_escalator,
@@ -145,7 +145,7 @@ impl<M: Middleware> Keeper<M> {
 
         // 3. trigger the auction for any undercollateralized borrowers
         self.liquidator
-            .trigger_liquidations(self.borrowers.vaults.iter(), gas_price)
+            .start_auctions(self.borrowers.vaults.iter(), gas_price)
             .await?;
 
         // 4. try buying the ones which are worth buying

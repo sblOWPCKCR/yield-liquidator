@@ -2,6 +2,11 @@
   {
     "inputs": [
       {
+        "internalType": "address",
+        "name": "_owner",
+        "type": "address"
+      },
+      {
         "internalType": "contract ISwapRouter",
         "name": "_swapRouter",
         "type": "address"
@@ -36,6 +41,45 @@
       }
     ],
     "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes12",
+        "name": "vaultId",
+        "type": "bytes12"
+      },
+      {
+        "internalType": "bytes6",
+        "name": "seriesId",
+        "type": "bytes6"
+      },
+      {
+        "internalType": "bytes6",
+        "name": "baseId",
+        "type": "bytes6"
+      },
+      {
+        "internalType": "bytes6",
+        "name": "ilkId",
+        "type": "bytes6"
+      },
+      {
+        "internalType": "uint128",
+        "name": "art",
+        "type": "uint128"
+      }
+    ],
+    "name": "collateralToDebtRatio",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
@@ -93,6 +137,30 @@
     ],
     "name": "initFlash",
     "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes12",
+        "name": "vaultId",
+        "type": "bytes12"
+      },
+      {
+        "internalType": "bytes6",
+        "name": "ilkId",
+        "type": "bytes6"
+      }
+    ],
+    "name": "isAtMinimalPrice",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
     "stateMutability": "nonpayable",
     "type": "function"
   },
