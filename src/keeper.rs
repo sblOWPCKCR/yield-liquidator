@@ -1,4 +1,5 @@
 use crate::{
+    bindings::Witch,
     borrowers::{VaultMap, Borrowers},
     escalator::GeometricGasPrice,
     liquidations::{AuctionMap, Liquidator},
@@ -40,7 +41,6 @@ impl<M: Middleware> Keeper<M> {
     /// data which should be taken into account from a previous run
     pub async fn new(
         client: Arc<M>,
-        controller: Address,
         liquidations: Address,
         flashloan: Address,
         multicall: Option<Address>,
@@ -52,7 +52,8 @@ impl<M: Middleware> Keeper<M> {
             Some(state) => (state.vaults, state.auctions, state.last_block.into()),
             None => (HashMap::new(), HashMap::new(), 0.into()),
         };
-
+        let witch = Witch::new(liquidations, client.clone());
+        let controller = witch.cauldron().call().await?;
         let borrowers = Borrowers::new(controller, liquidations, multicall, client.clone(), vaults).await;
         let liquidator = Liquidator::new(
             controller,

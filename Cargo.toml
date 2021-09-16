@@ -3,6 +3,7 @@ name = "yield-liquidator"
 version = "0.1.0"
 authors = ["Georgios Konstantopoulos <me@gakonst.com>"]
 edition = "2018"
+default-run = "liquidator"
 
 [dependencies]
 anyhow = "1.0.32"

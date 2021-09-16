@@ -31,7 +31,6 @@ Your contracts' `--config` file should be in the following format where:
  * `Multicall` is the address of the Multicall (https://github.com/makerdao/multicall)
 ```
 {
-  "Cauldron": "0x955C2Aaa7ef543Cf6D189E069eb273CE7bAB390D",
   "Witch": "0xCA4c47Ed4E8f8DbD73ecEd82ac0d8999960Ed57b",
   "Flash": "0xB869908891b245E82C8EDb74af02f799b61deC97",
   "Multicall": "0xeefba1e63905ef1d7acba5a8513c70307c1ce441"

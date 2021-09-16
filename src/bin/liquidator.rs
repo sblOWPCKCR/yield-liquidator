@@ -42,8 +42,6 @@ struct Opts {
 
 #[derive(Deserialize)]
 struct Config {
-    #[serde(rename = "Cauldron")]
-    cauldron: Address,
     #[serde(rename = "Witch")]
     witch: Address,
     #[serde(rename = "Flash")]
@@ -100,7 +98,6 @@ async fn run<P: JsonRpcClient + 'static>(opts: Opts, provider: Provider<P>) -> a
     info!("Node: {}", opts.url);
 
     let cfg: Config = serde_json::from_reader(std::fs::File::open(opts.config)?)?;
-    info!("Cauldron: {:?}", cfg.cauldron);
     info!("Witch: {:?}", cfg.witch);
     info!("Multicall: {:?}", cfg.multicall);
     info!("FlashLiquidator {:?}", cfg.flashloan);
@@ -121,7 +118,6 @@ async fn run<P: JsonRpcClient + 'static>(opts: Opts, provider: Provider<P>) -> a
 
     let mut keeper = Keeper::new(
         client,
-        cfg.cauldron,
         cfg.witch,
         cfg.flashloan,
         cfg.multicall,
