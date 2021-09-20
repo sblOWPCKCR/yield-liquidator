@@ -30,7 +30,7 @@ Store the private key in a file (/tmp/pk) without the '0x' prefix, store the jso
 
 In a new terminal, navigate back to the `yield-liquidator` directory and run:
 ```
-RUST_BACKTRACE=1 RUST_LOG=yield_liquidator=trace cargo run -- --chain_id 31337 -c config.json -p /tmp/pk -s BLOCK_NUMBER_AT_TIME_OF_DEPLOYMENT --min-ratio 50
+RUST_BACKTRACE=1 RUST_LOG="liquidator,yield_liquidator=debug" cargo run -- --chain_id 31337 -c config.json -p /tmp/pk -s BLOCK_NUMBER_AT_TIME_OF_DEPLOYMENT --min-ratio 50
 ```
 
 

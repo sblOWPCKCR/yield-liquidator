@@ -7,9 +7,10 @@ default-run = "liquidator"
 
 [dependencies]
 anyhow = "1.0.32"
-ethers = { version = "0.5.2", features=["ws"] }
+ethers = { version = "0.5.2", features=["ws", "openssl"] }
 ethers-core = { version = "0.5.3" }
 exitcode = "1.1.2"
+hex = "0.4.3"
 serde_json = "1.0.57"
 serde_with = "1.10.0"
 tokio = { version = "1.11.0", features = ["full"] }

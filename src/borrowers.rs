@@ -7,7 +7,7 @@ use crate::{bindings::Cauldron, bindings::Witch, bindings::VaultIdType, bindings
 use ethers::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
-use tracing::{debug, debug_span};
+use tracing::{debug, debug_span, trace, warn};
 
 pub type VaultMap = HashMap<VaultIdType, Vault>;
 
@@ -29,6 +29,8 @@ pub struct Borrowers<M> {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 /// A vault's details
 pub struct Vault {
+    pub is_initialized: bool,
+
     pub is_collateralized: bool,
 
     pub under_auction: bool,
@@ -80,15 +82,33 @@ impl<M: Middleware> Borrowers<M> {
             .map(|x| x.vault_id)
             .collect::<Vec<_>>();
 
-        debug!("New vaults: {}", new_vaults.len());
+        if new_vaults.len() > 0 {
+            debug!("New vaults: {}", new_vaults.len());
+        } else {
+            trace!("New vaults: {}", new_vaults.len());
+        }
 
         let all_vaults = crate::merge(new_vaults, &self.vaults);
 
         // update all the accounts' details
         for vault_id in all_vaults {
-            let details = self.get_vault_info(vault_id).await?;
-            if self.vaults.insert(vault_id, details.clone()).is_none() {
-                debug!(new_vault = ?vault_id, details=?details);
+            match self.get_vault_info(vault_id).await {
+                Ok(details) => {
+                    if self.vaults.insert(vault_id, details.clone()).is_none() {
+                        debug!(new_vault = ?vault_id, details=?details);
+                    }
+                }
+                Err(x) => {
+                    warn!(vault_id=?vault_id, err=?x, "Failed to get vault details");
+                    self.vaults.insert(vault_id, Vault {
+                        is_initialized: false,
+                        is_collateralized: false,
+                        level: I256::zero(),
+                        under_auction: false,
+                        art: [0, 0, 0, 0, 0, 0],
+                        ink: [0, 0, 0, 0, 0, 0]
+                    });
+                }
             }
         }
 
@@ -101,6 +121,7 @@ impl<M: Middleware> Borrowers<M> {
     /// 3. posted
     /// 4. totalDebtDai
     pub async fn get_vault_info(&mut self, vault_id: VaultIdType) -> Result<Vault, M> {
+        trace!(vault_id=?vault_id, "Getting vault info");
         let level_fn = self.cauldron.level(vault_id);
         let vault_data_fn = self.cauldron.vaults(vault_id);
         let auction_id_fn = self.liquidator.auctions(vault_id);
@@ -112,17 +133,24 @@ impl<M: Middleware> Borrowers<M> {
             .add_call(level_fn)
             .add_call(vault_data_fn)
             .add_call(auction_id_fn);
-        let (level_int, vault_data, auction_id): (I256, (Address, ArtIdType, InkIdType), (Address, u32)) =
-            multicall.call().await?;
 
-        let is_collateralized: bool = !level_int.is_negative();
+        match multicall.call::<(I256, (Address, ArtIdType, InkIdType), (Address, u32))>().await {
+            Ok((level_int, vault_data, auction_id)) => {
+                let is_collateralized: bool = !level_int.is_negative();
+                trace!(vault_id=?hex::encode(vault_id), "Got vault info");
 
-        Ok(Vault {
-            is_collateralized: is_collateralized,
-                level: level_int,
-                under_auction: auction_id.0 != Address::zero(),
-                art: vault_data.1,
-                ink: vault_data.2
-            })
+                Ok(Vault {
+                    is_initialized: true,
+                    is_collateralized: is_collateralized,
+                        level: level_int,
+                        under_auction: auction_id.0 != Address::zero(),
+                        art: vault_data.1,
+                        ink: vault_data.2
+                    })
+            }
+            Err(x) => {
+                Err(x)
+            }
+        }
     }
 }

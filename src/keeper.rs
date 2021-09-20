@@ -10,7 +10,7 @@ use ethers::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::{collections::HashMap, io::Write, path::PathBuf, sync::Arc};
-use tracing::{debug_span};
+use tracing::{debug_span, trace};
 
 #[serde_as]
 #[derive(Serialize, Deserialize, Default)]
@@ -89,12 +89,24 @@ impl<M: Middleware> Keeper<M> {
             .stream();
 
         let mut file: Option<std::fs::File> = None;
+
+        let mut maybe_last_block_number: Option<u64> = None;
+
         while on_block.next().await.is_some() {
             let block_number = self
                 .client
                 .get_block_number()
                 .await
                 .map_err(ContractError::MiddlewareError)?;
+
+            if let Some(last_block_number) = maybe_last_block_number {
+                if last_block_number == block_number.as_u64() {
+                    trace!(last_block_number, "skipping previously seen block");
+                    continue;
+                }
+            }
+
+            maybe_last_block_number = Some(block_number.as_u64());
 
             if block_number % 10 == 0.into() {
                 // on each new block we open a new file handler to dump our state.
@@ -108,7 +120,6 @@ impl<M: Middleware> Keeper<M> {
                         .unwrap(),
                 );
             }
-
             let span = debug_span!("eloop", block = %block_number);
             let _enter = span.enter();
 

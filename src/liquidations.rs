@@ -16,9 +16,9 @@ use ethers::{
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt, sync::Arc, time::Instant};
-use tracing::{debug, debug_span, error, info, trace};
+use tracing::{debug, debug_span, error, info, trace, warn};
 
-pub type AuctionMap = HashMap<VaultIdType, Auction>;
+pub type AuctionMap = HashMap<VaultIdType, bool>;
 
 
 #[derive(Clone)]
@@ -28,7 +28,7 @@ pub struct Liquidator<M> {
     pairflash: PairFlash<M>,
 
     /// The currently active auctions
-    pub auctions: HashMap<VaultIdType, Auction>,
+    pub auctions: AuctionMap,
 
     /// We use multicall to batch together calls and have reduced stress on
     /// our RPC endpoint
@@ -64,6 +64,8 @@ pub struct Auction {
 
     debt_address: Address,
     collateral_address: Address,
+
+    series_id: SeriesIdType,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -91,7 +93,7 @@ impl<M: Middleware> Liquidator<M> {
         multicall: Option<Address>,
         min_ratio: u16,
         client: Arc<M>,
-        auctions: HashMap<VaultIdType, Auction>,
+        auctions: AuctionMap,
         gas_escalator: GeometricGasPrice,
     ) -> Self {
         let multicall = Multicall::new(client.clone(), multicall)
@@ -136,13 +138,9 @@ impl<M: Middleware> Liquidator<M> {
         ) -> Result<(), M> {
         for (addr, (pending_tx_wrapper, tx_hash, instant)) in pending_txs.clone().into_iter() {
             let pending_tx = match pending_tx_wrapper {
-                TypedTransaction::Legacy(x) => x,
-                _ => panic!("Non-legacy transactions are not supported yet")
+                TypedTransaction::Eip1559(x) => x,
+                _ => panic!("Non-Eip1559 transactions are not supported yet")
             };
-            debug_assert!(
-                pending_tx.gas_price.is_some(),
-                "gas price must be set in pending txs"
-            );
 
             // get the receipt and check inclusion, or bump its gas price
             let receipt = client
@@ -162,7 +160,7 @@ impl<M: Middleware> Liquidator<M> {
                 // Get the new gas price based on how much time passed since the
                 // tx was last broadcast
                 let new_gas_price = gas_escalator.get_gas_price(
-                    pending_tx.gas_price.expect("gas price must be set"),
+                    pending_tx.max_fee_per_gas.expect("max_fee_per_gas price must be set"),
                     now.duration_since(instant).as_secs(),
                 );
 
@@ -171,10 +169,11 @@ impl<M: Middleware> Liquidator<M> {
                     .expect("tx will always be found since we're iterating over the map");
 
                 // bump the gas price
-                if let TypedTransaction::Legacy(x) = &mut replacement_tx.0 {
-                    x.gas_price = Some(new_gas_price);
+                if let TypedTransaction::Eip1559(x) = &mut replacement_tx.0 {
+                    x.max_fee_per_gas = Some(new_gas_price);
+                    x.max_priority_fee_per_gas = Some(new_gas_price); // 2 gwei
                 } else {
-                    panic!("Non-legacy transactions are not supported yet");
+                    panic!("Non-Eip1559 transactions are not supported yet");
                 }
 
                 // rebroadcast (TODO: Can we avoid cloning?)
@@ -213,8 +212,12 @@ impl<M: Middleware> Liquidator<M> {
         };
 
         for vault_id in all_auctions {
+            self.auctions.insert(vault_id, true);
+
+            trace!(vault_id=?hex::encode(vault_id), "Buying");
             let is_still_valid: bool = self.buy(vault_id, Instant::now(), gas_price).await?;
             if !is_still_valid {
+                info!(vault_id=?hex::encode(vault_id), "Removing no longer valid auction");
                 self.auctions.remove(&vault_id);
             }
         }
@@ -236,38 +239,44 @@ impl<M: Middleware> Liquidator<M> {
         }
 
         // Get the vault's info
-        let auction = self.get_auction(vault_id).await?;
+        let auction = match self.get_auction(vault_id).await {
+            Ok(x) => x,
+            Err(x) => {
+                warn!(vault_id=?hex::encode(vault_id), err=?x, "Failed to get auction");
+                return Ok(true);
+            }
+        };
 
         if !auction.under_auction {
-            debug!(vault_id=?vault_id, auction=?auction, "Auction is no longer active");
+            debug!(vault_id=?hex::encode(vault_id), auction=?auction, "Auction is no longer active");
             return Ok(false);
         }
 
         // Skip auctions which do not have any outstanding debt
         if auction.debt == 0 {
-            debug!(vault_id=?vault_id, auction=?auction, "Has no debt - skipping");
+            debug!(vault_id=?hex::encode(vault_id), auction=?auction, "Has no debt - skipping");
             return Ok(true);
         }
 
         let mut buy: bool = false;
         if auction.ratio_pct <= self.min_ratio {
-            debug!(vault_id=?vault_id, auction=?auction,
+            debug!(vault_id=?hex::encode(vault_id), auction=?auction,
                 ratio=auction.ratio_pct, ratio_threshold=self.min_ratio,
                 "Ratio threshold is reached, buying");
             buy = true;
         }
         if auction.is_at_minimal_price {
-            debug!(vault_id=?vault_id, auction=?auction,
+            debug!(vault_id=?hex::encode(vault_id), auction=?auction,
                 ratio=auction.ratio_pct, ratio_threshold=self.min_ratio,
                 "Is at minimal price, buying");
             buy = true;
         }
         if !buy {
-            debug!(vault_id=?vault_id, auction=?auction, "Not time to buy yet");
+            debug!(vault_id=?hex::encode(vault_id), auction=?auction, "Not time to buy yet");
             return Ok(true);
         }
 
-        if self.auctions.insert(vault_id, auction.clone()).is_none() {
+        if self.auctions.insert(vault_id, true).is_none() {
             debug!(vault_id=?vault_id, auction=?auction, "new auction");
         }
         let span = debug_span!("buying", vault_id=?vault_id, auction=?auction);
@@ -279,10 +288,11 @@ impl<M: Middleware> Liquidator<M> {
             debt_amount: U256::from(auction.debt),
             vault_id: vault_id,
             collateral_id: auction.collateral_id,
-            debt_id: auction.debt_id
+            debt_id: auction.debt_id,
+            series_id: auction.series_id
         };
         let call = self.pairflash.init_flash(args)
-            .legacy() // XXX
+            // .legacy() // XXX
             .gas_price(gas_price)
             .block(BlockNumber::Pending);
 
@@ -317,34 +327,43 @@ impl<M: Middleware> Liquidator<M> {
         let now = Instant::now();
 
         for (vault_id, vault) in vaults {
-            debug!(vault_id=?vault_id, "Checking vault");
+            if !vault.is_initialized {
+                trace!(vault_id = ?hex::encode(vault_id), "Vault is not initialized yet, skipping");
+                continue;
+            }
             // only iterate over vaults that do not have pending liquidations
             if let Some(pending_tx) = self.pending_liquidations.get(vault_id) {
-                trace!(tx_hash = ?pending_tx.1, vault_id = ?vault_id, "liquidation not confirmed yet");
+                trace!(tx_hash = ?pending_tx.1, vault_id = ?hex::encode(vault_id), "liquidation not confirmed yet");
                 continue;
             }
 
             if !vault.is_collateralized {
                 if vault.under_auction {
-                    debug!(vault_id = ?vault_id, details = ?vault, "found vault under auction, ignoring it");
+                    debug!(vault_id = ?hex::encode(vault_id), details = ?vault, "found vault under auction, ignoring it");
                     continue;
                 }
                 info!(
-                    vault_id = ?vault_id, details = ?vault,
-                    "found undercollateralized vault. starting an auction",
+                    vault_id = ?hex::encode(vault_id), details = ?vault, gas_price=?gas_price,
+                    "found an undercollateralized vault. starting an auction",
                 );
 
                 // Send the tx and track it
                 // XXX legacy
-                let call = self.liquidator.auction(*vault_id).legacy().gas_price(gas_price);
+                let call = self.liquidator.auction(*vault_id)/*.legacy()*/.gas_price(gas_price);
                 let tx = call.tx.clone();
-                let tx_hash = call.send().await?;
-                trace!(tx_hash = ?tx_hash, vault_id = ?vault_id, "Submitted liquidation");
-                self.pending_liquidations
-                    .entry(*vault_id)
-                    .or_insert((tx, *tx_hash, now));
+                match call.send().await {
+                    Ok(tx_hash) => {
+                        trace!(tx_hash = ?tx_hash, vault_id = ?hex::encode(vault_id), "Submitted liquidation");
+                        self.pending_liquidations
+                            .entry(*vault_id)
+                            .or_insert((tx, *tx_hash, now));
+                    }
+                    Err(x) => {
+                        warn!(vault_id = ?hex::encode(vault_id), error=?x, "Can't start the auction");
+                    }
+                };
             } else {
-                debug!(vault_id=?vault_id, "Vault is collateralized");
+                debug!(vault_id=?hex::encode(vault_id), "Vault is collateralized");
             }
         }
         Ok(())
@@ -370,6 +389,14 @@ impl<M: Middleware> Liquidator<M> {
 
         let (_, art_id, _) = self.cauldron.series(series_id).call().await?;
 
+        trace!(
+            vault_id=?hex::encode(vault_id),
+            ilk_id=?hex::encode(ilk_id),
+            series_id=?hex::encode(series_id),
+            art_id=?hex::encode(art_id),
+            art=?art,
+            "Fetching auction details"
+        );
         // resolve asset IDs
         let multicall = self
             .multicall
@@ -402,7 +429,8 @@ impl<M: Middleware> Liquidator<M> {
             debt_id: art_id,
             collateral_id: ilk_id,
             debt_address: art_address,
-            collateral_address: ink_address
+            collateral_address: ink_address,
+            series_id: series_id,
         })
 
     }
