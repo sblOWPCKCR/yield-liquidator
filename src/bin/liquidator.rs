@@ -38,6 +38,15 @@ struct Opts {
 
     #[options(help = "the block to start watching from")]
     start_block: Option<u64>,
+
+    #[options(default="false", help="Use JSON as log format")]
+    json_log: bool,
+
+    #[options(
+        help = "Instance name (used for logging)",
+        default = "undefined"
+    )]
+    instance_name: String,
 }
 
 #[derive(Deserialize)]
@@ -50,12 +59,28 @@ struct Config {
     multicall: Option<Address>,
 }
 
-async fn main_impl() -> anyhow::Result<()> {
-    Subscriber::builder()
-        .with_env_filter(EnvFilter::from_default_env())
-        .init();
+fn init_logger(use_json: bool) {
+    let sub_builder = 
+        Subscriber::builder()
+        .with_env_filter(EnvFilter::from_default_env());
 
+    if use_json {
+        sub_builder
+            .json()
+            .with_current_span(true)
+            .with_span_list(true)
+            .init();
+    } else {
+        sub_builder
+            .init();
+    }
+}
+
+async fn main_impl() -> anyhow::Result<()> {
     let opts = Opts::parse_args_default_or_exit();
+
+    init_logger(opts.json_log);
+
 
     if opts.url.starts_with("http") {
         let provider = Provider::<Http>::try_from(opts.url.clone())?;
@@ -95,7 +120,7 @@ async fn run<P: JsonRpcClient + 'static>(opts: Opts, provider: Provider<P>) -> a
     let client = Arc::new(client);
     info!("Profits will be sent to {:?}", address);
 
-    info!("Node: {}", opts.url);
+    info!(instance_name=opts.instance_name.as_str(), "Node: {}", opts.url);
 
     let cfg: Config = serde_json::from_reader(std::fs::File::open(opts.config)?)?;
     info!("Witch: {:?}", cfg.witch);
@@ -124,6 +149,7 @@ async fn run<P: JsonRpcClient + 'static>(opts: Opts, provider: Provider<P>) -> a
         opts.min_ratio,
         gas_escalator,
         state,
+        format!("{}.witch={:?}.flash={:?}", opts.instance_name, cfg.witch, cfg.flashloan)
     )
     .await?;
 

@@ -7,7 +7,7 @@ use crate::{bindings::Cauldron, bindings::Witch, bindings::VaultIdType, bindings
 use ethers::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
-use tracing::{debug, debug_span, trace, warn};
+use tracing::{debug, debug_span, trace, warn, info, instrument};
 
 pub type VaultMap = HashMap<VaultIdType, Vault>;
 
@@ -24,6 +24,8 @@ pub struct Borrowers<M> {
     /// We use multicall to batch together calls and have reduced stress on
     /// our RPC endpoint
     multicall: Multicall<M>,
+
+    instance_name: String
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -50,6 +52,7 @@ impl<M: Middleware> Borrowers<M> {
         multicall: Option<Address>,
         client: Arc<M>,
         vaults: HashMap<VaultIdType, Vault>,
+        instance_name: String
     ) -> Self {
         let multicall = Multicall::new(client.clone(), multicall)
             .await
@@ -59,12 +62,14 @@ impl<M: Middleware> Borrowers<M> {
             liquidator: Witch::new(liquidator, client),
             vaults,
             multicall,
+            instance_name
         }
     }
 
     /// Gets any new borrowers which may have joined the system since we last
     /// made this call and then proceeds to get the latest account details for
     /// each user
+    #[instrument(skip(self), fields(self.instance_name))]
     pub async fn update_vaults(&mut self, from_block: U64, to_block: U64) -> Result<(), M> {
         let span = debug_span!("monitoring");
         let _enter = span.enter();
@@ -89,6 +94,7 @@ impl<M: Middleware> Borrowers<M> {
         }
 
         let all_vaults = crate::merge(new_vaults, &self.vaults);
+        info!(count=all_vaults.len(), instance_name=self.instance_name.as_str(), "Vaults collected");
 
         // update all the accounts' details
         for vault_id in all_vaults {
@@ -115,11 +121,9 @@ impl<M: Middleware> Borrowers<M> {
         Ok(())
     }
 
-    /// Updates the user's details by calling:
-    /// 1. powerOf
-    /// 2. isCollateralized
-    /// 3. posted
-    /// 4. totalDebtDai
+    /// Updates the vault info
+    /// 
+    #[instrument(skip(self), fields(self.instance_name))]
     pub async fn get_vault_info(&mut self, vault_id: VaultIdType) -> Result<Vault, M> {
         trace!(vault_id=?vault_id, "Getting vault info");
         let level_fn = self.cauldron.level(vault_id);

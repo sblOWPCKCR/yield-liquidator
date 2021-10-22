@@ -16,7 +16,7 @@ use ethers::{
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt, sync::Arc, time::Instant};
-use tracing::{debug, debug_span, error, info, trace, warn};
+use tracing::{debug, debug_span, error, info, trace, warn, instrument};
 
 pub type AuctionMap = HashMap<VaultIdType, bool>;
 
@@ -40,6 +40,8 @@ pub struct Liquidator<M> {
     pending_liquidations: HashMap<VaultIdType, PendingTransaction>,
     pending_auctions: HashMap<VaultIdType, PendingTransaction>,
     gas_escalator: GeometricGasPrice,
+
+    instance_name: String
 }
 
 /// Tx / Hash/ Submitted at time
@@ -95,6 +97,7 @@ impl<M: Middleware> Liquidator<M> {
         client: Arc<M>,
         auctions: AuctionMap,
         gas_escalator: GeometricGasPrice,
+        instance_name: String
     ) -> Self {
         let multicall = Multicall::new(client.clone(), multicall)
             .await
@@ -111,20 +114,22 @@ impl<M: Middleware> Liquidator<M> {
             pending_liquidations: HashMap::new(),
             pending_auctions: HashMap::new(),
             gas_escalator,
+            instance_name
         }
     }
 
     /// Checks if any transactions which have been submitted are mined, removes
     /// them if they were successful, otherwise bumps their gas price
+    #[instrument(skip(self), fields(self.instance_name))]
     pub async fn remove_or_bump(&mut self) -> Result<(), M> {
         let now = Instant::now();
 
         let liquidator_client = self.liquidator.client();
         // Check all the pending liquidations
         Liquidator::remove_or_bump_inner(now, liquidator_client, &self.gas_escalator,
-            &mut self.pending_liquidations, "liquidations").await?;
+            &mut self.pending_liquidations, "liquidations", self.instance_name.as_ref()).await?;
         Liquidator::remove_or_bump_inner(now, liquidator_client, &self.gas_escalator,
-            &mut self.pending_auctions, "auctions").await?;
+            &mut self.pending_auctions, "auctions", self.instance_name.as_ref()).await?;
 
         Ok(())
     }
@@ -134,7 +139,8 @@ impl<M: Middleware> Liquidator<M> {
         client: &M,
         gas_escalator: &GeometricGasPrice,
         pending_txs: &mut HashMap<K, PendingTransaction>,
-        tx_type: &str
+        tx_type: &str,
+        instance_name: &str
         ) -> Result<(), M> {
         for (addr, (pending_tx_wrapper, tx_hash, instant)) in pending_txs.clone().into_iter() {
             let pending_tx = match pending_tx_wrapper {
@@ -154,8 +160,8 @@ impl<M: Middleware> Liquidator<M> {
                 } else {
                     "fail"
                 };
-                trace!(tx_hash = ?tx_hash, gas_used = %receipt.gas_used.unwrap_or_default(), user = ?addr,
-                    status = status, tx_type, "confirmed");
+                info!(tx_hash = ?tx_hash, gas_used = %receipt.gas_used.unwrap_or_default(), user = ?addr,
+                    status = status, tx_type, instance_name, "confirmed");
             } else {
                 // Get the new gas price based on how much time passed since the
                 // tx was last broadcast
@@ -182,8 +188,8 @@ impl<M: Middleware> Liquidator<M> {
                     .await
                     .map_err(ContractError::MiddlewareError)?;
 
-                trace!(tx_hash = ?tx_hash, new_gas_price = %new_gas_price, user = ?addr,
-                    tx_type, "replaced");
+                info!(tx_hash = ?tx_hash, new_gas_price = %new_gas_price, user = ?addr,
+                    tx_type, instance_name, "Bumping gas: done");
             }
         }
 
@@ -191,6 +197,7 @@ impl<M: Middleware> Liquidator<M> {
     }
 
     /// Sends a bid for any of the liquidation auctions.
+    #[instrument(skip(self, from_block, to_block), fields(self.instance_name))]
     pub async fn buy_opportunities(
         &mut self,
         from_block: U64,
@@ -211,13 +218,14 @@ impl<M: Middleware> Liquidator<M> {
             merge(new_liquidations, &self.auctions)
         };
 
+        info!(count=all_auctions.len(), instance_name=self.instance_name.as_str(), "Liquidations collected");
         for vault_id in all_auctions {
             self.auctions.insert(vault_id, true);
 
             trace!(vault_id=?hex::encode(vault_id), "Buying");
             let is_still_valid: bool = self.buy(vault_id, Instant::now(), gas_price).await?;
             if !is_still_valid {
-                info!(vault_id=?hex::encode(vault_id), "Removing no longer valid auction");
+                info!(vault_id=?hex::encode(vault_id), instance_name=self.instance_name.as_str(), "Removing no longer valid auction");
                 self.auctions.remove(&vault_id);
             }
         }
@@ -231,6 +239,7 @@ impl<M: Middleware> Liquidator<M> {
     /// Returns
     ///  - Result<false>: auction is no longer valid, we need to forget about it
     ///  - Result<true>: auction is still valid
+    #[instrument(skip(self), fields(self.instance_name))]
     async fn buy(&mut self, vault_id: VaultIdType, now: Instant, gas_price: U256) -> Result<bool, M> {
         // only iterate over users that do not have active auctions
         if let Some(pending_tx) = self.pending_auctions.get(&vault_id) {
@@ -260,14 +269,16 @@ impl<M: Middleware> Liquidator<M> {
 
         let mut buy: bool = false;
         if auction.ratio_pct <= self.min_ratio {
-            debug!(vault_id=?hex::encode(vault_id), auction=?auction,
+            info!(vault_id=?hex::encode(vault_id), auction=?auction,
                 ratio=auction.ratio_pct, ratio_threshold=self.min_ratio,
+                instance_name=self.instance_name.as_str(),
                 "Ratio threshold is reached, buying");
             buy = true;
         }
         if auction.is_at_minimal_price {
-            debug!(vault_id=?hex::encode(vault_id), auction=?auction,
+            info!(vault_id=?hex::encode(vault_id), auction=?auction,
                 ratio=auction.ratio_pct, ratio_threshold=self.min_ratio,
+                instance_name=self.instance_name.as_str(),
                 "Is at minimal price, buying");
             buy = true;
         }
@@ -292,7 +303,6 @@ impl<M: Middleware> Liquidator<M> {
             series_id: auction.series_id
         };
         let call = self.pairflash.init_flash(args)
-            // .legacy() // XXX
             .gas_price(gas_price)
             .block(BlockNumber::Pending);
 
@@ -301,14 +311,14 @@ impl<M: Middleware> Liquidator<M> {
         match call.send().await {
             Ok(hash) => {
                 // record the tx
-                trace!(tx_hash = ?hash, "Submitted buy order");
+                info!(tx_hash = ?hash, instance_name=self.instance_name.as_str(), "Submitted buy order");
                 self.pending_auctions
                     .entry(vault_id)
                     .or_insert((tx, *hash, now));
             }
             Err(err) => {
                 let err = err.to_string();
-                error!("Error: {}", err);
+                error!("Error: {}; data: {:?}", err, call.calldata());
             }
         };
 
@@ -317,6 +327,7 @@ impl<M: Middleware> Liquidator<M> {
 
     /// Triggers liquidations for any vulnerable positions which were fetched from the
     /// controller
+    #[instrument(skip(self, vaults), fields(self.instance_name))]
     pub async fn start_auctions(
         &mut self,
         vaults: impl Iterator<Item = (&VaultIdType, &Vault)>,
@@ -344,22 +355,26 @@ impl<M: Middleware> Liquidator<M> {
                 }
                 info!(
                     vault_id = ?hex::encode(vault_id), details = ?vault, gas_price=?gas_price,
+                    instance_name=self.instance_name.as_str(),
                     "found an undercollateralized vault. starting an auction",
                 );
 
                 // Send the tx and track it
-                // XXX legacy
-                let call = self.liquidator.auction(*vault_id)/*.legacy()*/.gas_price(gas_price);
+                let call = self.liquidator.auction(*vault_id).gas_price(gas_price);
                 let tx = call.tx.clone();
                 match call.send().await {
                     Ok(tx_hash) => {
-                        trace!(tx_hash = ?tx_hash, vault_id = ?hex::encode(vault_id), "Submitted liquidation");
+                        info!(tx_hash = ?tx_hash, vault_id = ?hex::encode(vault_id), instance_name=self.instance_name.as_str(), "Submitted liquidation");
                         self.pending_liquidations
                             .entry(*vault_id)
                             .or_insert((tx, *tx_hash, now));
                     }
                     Err(x) => {
-                        warn!(vault_id = ?hex::encode(vault_id), error=?x, "Can't start the auction");
+                        warn!(
+                            vault_id = ?hex::encode(vault_id), 
+                            error=?x,
+                            calldata=?call.calldata(),
+                            "Can't start the auction");
                     }
                 };
             } else {

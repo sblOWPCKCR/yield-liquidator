@@ -18,9 +18,9 @@ tokio = { version = "1.11.0", features = ["full"] }
 # CLI
 gumdrop = "0.8.0"
 # Logging
-tracing = "0.1.18"
-tracing-subscriber = "0.2.10"
-serde = "1.0.114"
+tracing = "0.1.29"
+tracing-subscriber = {version="0.2.25", features =["default", "json"]}
+serde = "1.0.130"
 thiserror = "1.0.20"
 
 [build-dependencies]
