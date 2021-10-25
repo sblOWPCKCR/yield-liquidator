@@ -12,6 +12,7 @@ use serde_with::serde_as;
 use std::{
     collections::HashMap, io::Write, path::PathBuf, sync::Arc, time::SystemTime, time::UNIX_EPOCH,
 };
+use tokio::time::{sleep, Duration};
 use tracing::{debug_span, info, instrument, trace};
 
 #[serde_as]
@@ -107,6 +108,7 @@ impl<M: Middleware> Keeper<M> {
         let span = debug_span!("run", instance_name=self.instance_name.as_str());
         let _enter = span.enter();
         loop {
+            sleep(Duration::from_secs(30)).await; // don't spin
             match watcher
                 .get_filter_changes::<_, ethers_core::types::H256>(filter_id)
                 .await

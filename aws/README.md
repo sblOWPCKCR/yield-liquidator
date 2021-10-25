@@ -24,6 +24,15 @@ cd aws
 ```
 Create the ECS cluster that Fargate tasks will run on. This is truly a one-time step that doesn't need to be ever redone
 
+
+### Step 0.1: create VPC endpoints
+There are 2 types of permissions that need to be granted that needs to align: AWS **permissions** and firewall rules. Even if you allow bot to access S3, it won't be able to physically do this unless a firewall rule is created.
+
+To create the firewall rules, we create endpoints in the VPC that hosts our task, one for each AWS service our bot needs access to.
+Go to [VPC page](https://us-west-2.console.aws.amazon.com/vpc/home?), "Endpoints", and create endpoints for S3, Secrets manager, ECR (Docker container storage and API), CloudWatch:
+![VPC config](./imgs/vpc_config.png)
+
+
 ### Step 1: create security roles
 ```bash
 ./01.deploy_roles.sh
@@ -60,3 +69,4 @@ The new task instance appears in the cluster. It takes about a minute to set up,
 ### Step 5: adding the new instance to CloudWatch dashboard
 Open the dashboard (https://us-west-2.console.aws.amazon.com/cloudwatch/home?region=us-west-2#dashboards:name=yield), edit each graph to add the counters from the new instance there.
 Don't forget to copy the new Source for each graph to the monitoring page. Use `dashboard_encode.py` for this: launch it, copy/paste the graph source to it.
+
