@@ -6,7 +6,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
 # build dependencies - they're not changed frequently
 WORKDIR /usr/src/
-COPY Cargo.* .
+COPY Cargo.* ./
 COPY Cargo.toml .
 RUN mkdir -p src/bin \
     && echo "//" > src/lib.rs \
