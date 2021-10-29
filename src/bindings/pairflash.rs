@@ -17,7 +17,7 @@ mod pairflash_mod {
     use std::sync::Arc;
     pub static PAIRFLASH_ABI: ethers::contract::Lazy<ethers::core::abi::Abi> =
         ethers::contract::Lazy::new(|| {
-            serde_json :: from_str ("[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_owner\",\"type\":\"address\"},{\"internalType\":\"contract ISwapRouter\",\"name\":\"_swapRouter\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_factory\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_WETH9\",\"type\":\"address\"},{\"internalType\":\"contract IWitch\",\"name\":\"_witch\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[],\"name\":\"WETH9\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes12\",\"name\":\"vaultId\",\"type\":\"bytes12\"},{\"internalType\":\"bytes6\",\"name\":\"seriesId\",\"type\":\"bytes6\"},{\"internalType\":\"bytes6\",\"name\":\"baseId\",\"type\":\"bytes6\"},{\"internalType\":\"bytes6\",\"name\":\"ilkId\",\"type\":\"bytes6\"},{\"internalType\":\"uint128\",\"name\":\"art\",\"type\":\"uint128\"}],\"name\":\"collateralToDebtRatio\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"factory\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"components\":[{\"internalType\":\"address\",\"name\":\"collateral\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"debt\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"debtAmount\",\"type\":\"uint256\"},{\"internalType\":\"bytes12\",\"name\":\"vaultId\",\"type\":\"bytes12\"},{\"internalType\":\"bytes6\",\"name\":\"collateralId\",\"type\":\"bytes6\"},{\"internalType\":\"bytes6\",\"name\":\"debtId\",\"type\":\"bytes6\"},{\"internalType\":\"bytes6\",\"name\":\"seriesId\",\"type\":\"bytes6\"}],\"internalType\":\"struct PairFlash.FlashParams\",\"name\":\"params\",\"type\":\"tuple\"}],\"name\":\"initFlash\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes12\",\"name\":\"vaultId\",\"type\":\"bytes12\"},{\"internalType\":\"bytes6\",\"name\":\"ilkId\",\"type\":\"bytes6\"}],\"name\":\"isAtMinimalPrice\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"refundETH\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"swapRouter\",\"outputs\":[{\"internalType\":\"contract ISwapRouter\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"token\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"amountMinimum\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"recipient\",\"type\":\"address\"}],\"name\":\"sweepToken\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"fee0\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"fee1\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"}],\"name\":\"uniswapV3FlashCallback\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"amountMinimum\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"recipient\",\"type\":\"address\"}],\"name\":\"unwrapWETH9\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"stateMutability\":\"payable\",\"type\":\"receive\"}]") . expect ("invalid abi")
+            serde_json :: from_str ("[\n    {\n      \"inputs\": [\n        {\n          \"internalType\": \"address\",\n          \"name\": \"_recipient\",\n          \"type\": \"address\"\n        },\n        {\n          \"internalType\": \"contract ISwapRouter\",\n          \"name\": \"_swapRouter\",\n          \"type\": \"address\"\n        },\n        {\n          \"internalType\": \"address\",\n          \"name\": \"_factory\",\n          \"type\": \"address\"\n        },\n        {\n          \"internalType\": \"address\",\n          \"name\": \"_WETH9\",\n          \"type\": \"address\"\n        },\n        {\n          \"internalType\": \"contract IWitch\",\n          \"name\": \"_witch\",\n          \"type\": \"address\"\n        }\n      ],\n      \"stateMutability\": \"nonpayable\",\n      \"type\": \"constructor\"\n    },\n    {\n      \"inputs\": [],\n      \"name\": \"WETH9\",\n      \"outputs\": [\n        {\n          \"internalType\": \"address\",\n          \"name\": \"\",\n          \"type\": \"address\"\n        }\n      ],\n      \"stateMutability\": \"view\",\n      \"type\": \"function\"\n    },\n    {\n      \"inputs\": [],\n      \"name\": \"cauldron\",\n      \"outputs\": [\n        {\n          \"internalType\": \"contract ICauldron\",\n          \"name\": \"\",\n          \"type\": \"address\"\n        }\n      ],\n      \"stateMutability\": \"view\",\n      \"type\": \"function\"\n    },\n    {\n      \"inputs\": [\n        {\n          \"internalType\": \"bytes12\",\n          \"name\": \"vaultId\",\n          \"type\": \"bytes12\"\n        },\n        {\n          \"internalType\": \"bytes6\",\n          \"name\": \"seriesId\",\n          \"type\": \"bytes6\"\n        },\n        {\n          \"internalType\": \"bytes6\",\n          \"name\": \"baseId\",\n          \"type\": \"bytes6\"\n        },\n        {\n          \"internalType\": \"bytes6\",\n          \"name\": \"ilkId\",\n          \"type\": \"bytes6\"\n        },\n        {\n          \"internalType\": \"uint128\",\n          \"name\": \"art\",\n          \"type\": \"uint128\"\n        }\n      ],\n      \"name\": \"collateralToDebtRatio\",\n      \"outputs\": [\n        {\n          \"internalType\": \"uint256\",\n          \"name\": \"\",\n          \"type\": \"uint256\"\n        }\n      ],\n      \"stateMutability\": \"nonpayable\",\n      \"type\": \"function\"\n    },\n    {\n      \"inputs\": [],\n      \"name\": \"factory\",\n      \"outputs\": [\n        {\n          \"internalType\": \"address\",\n          \"name\": \"\",\n          \"type\": \"address\"\n        }\n      ],\n      \"stateMutability\": \"view\",\n      \"type\": \"function\"\n    },\n    {\n      \"inputs\": [\n        {\n          \"internalType\": \"bytes12\",\n          \"name\": \"vaultId\",\n          \"type\": \"bytes12\"\n        },\n        {\n          \"internalType\": \"bytes6\",\n          \"name\": \"ilkId\",\n          \"type\": \"bytes6\"\n        }\n      ],\n      \"name\": \"isAtMinimalPrice\",\n      \"outputs\": [\n        {\n          \"internalType\": \"bool\",\n          \"name\": \"\",\n          \"type\": \"bool\"\n        }\n      ],\n      \"stateMutability\": \"nonpayable\",\n      \"type\": \"function\"\n    },\n    {\n      \"inputs\": [\n        {\n          \"internalType\": \"bytes12\",\n          \"name\": \"vaultId\",\n          \"type\": \"bytes12\"\n        }\n      ],\n      \"name\": \"liquidate\",\n      \"outputs\": [],\n      \"stateMutability\": \"nonpayable\",\n      \"type\": \"function\"\n    },\n    {\n      \"inputs\": [],\n      \"name\": \"recipient\",\n      \"outputs\": [\n        {\n          \"internalType\": \"address\",\n          \"name\": \"\",\n          \"type\": \"address\"\n        }\n      ],\n      \"stateMutability\": \"view\",\n      \"type\": \"function\"\n    },\n    {\n      \"inputs\": [],\n      \"name\": \"refundETH\",\n      \"outputs\": [],\n      \"stateMutability\": \"payable\",\n      \"type\": \"function\"\n    },\n    {\n      \"inputs\": [],\n      \"name\": \"swapRouter\",\n      \"outputs\": [\n        {\n          \"internalType\": \"contract ISwapRouter\",\n          \"name\": \"\",\n          \"type\": \"address\"\n        }\n      ],\n      \"stateMutability\": \"view\",\n      \"type\": \"function\"\n    },\n    {\n      \"inputs\": [\n        {\n          \"internalType\": \"address\",\n          \"name\": \"token\",\n          \"type\": \"address\"\n        },\n        {\n          \"internalType\": \"uint256\",\n          \"name\": \"amountMinimum\",\n          \"type\": \"uint256\"\n        },\n        {\n          \"internalType\": \"address\",\n          \"name\": \"recipient\",\n          \"type\": \"address\"\n        }\n      ],\n      \"name\": \"sweepToken\",\n      \"outputs\": [],\n      \"stateMutability\": \"payable\",\n      \"type\": \"function\"\n    },\n    {\n      \"inputs\": [\n        {\n          \"internalType\": \"uint256\",\n          \"name\": \"fee0\",\n          \"type\": \"uint256\"\n        },\n        {\n          \"internalType\": \"uint256\",\n          \"name\": \"fee1\",\n          \"type\": \"uint256\"\n        },\n        {\n          \"internalType\": \"bytes\",\n          \"name\": \"data\",\n          \"type\": \"bytes\"\n        }\n      ],\n      \"name\": \"uniswapV3FlashCallback\",\n      \"outputs\": [],\n      \"stateMutability\": \"nonpayable\",\n      \"type\": \"function\"\n    },\n    {\n      \"inputs\": [\n        {\n          \"internalType\": \"uint256\",\n          \"name\": \"amountMinimum\",\n          \"type\": \"uint256\"\n        },\n        {\n          \"internalType\": \"address\",\n          \"name\": \"recipient\",\n          \"type\": \"address\"\n        }\n      ],\n      \"name\": \"unwrapWETH9\",\n      \"outputs\": [],\n      \"stateMutability\": \"payable\",\n      \"type\": \"function\"\n    },\n    {\n      \"inputs\": [],\n      \"name\": \"witch\",\n      \"outputs\": [\n        {\n          \"internalType\": \"contract IWitch\",\n          \"name\": \"\",\n          \"type\": \"address\"\n        }\n      ],\n      \"stateMutability\": \"view\",\n      \"type\": \"function\"\n    },\n    {\n      \"stateMutability\": \"payable\",\n      \"type\": \"receive\"\n    }\n  ]") . expect ("invalid abi")
         });
     #[derive(Clone)]
     pub struct PairFlash<M>(ethers::contract::Contract<M>);
@@ -54,6 +54,14 @@ mod pairflash_mod {
                 .method_hash([74, 164, 164, 252], ())
                 .expect("method not found (this should never happen)")
         }
+        #[doc = "Calls the contract's `cauldron` (0x97ff6a04) function"]
+        pub fn cauldron(
+            &self,
+        ) -> ethers::contract::builders::ContractCall<M, ethers::core::types::Address> {
+            self.0
+                .method_hash([151, 255, 106, 4], ())
+                .expect("method not found (this should never happen)")
+        }
         #[doc = "Calls the contract's `collateralToDebtRatio` (0x21335c10) function"]
         pub fn collateral_to_debt_ratio(
             &self,
@@ -78,15 +86,6 @@ mod pairflash_mod {
                 .method_hash([196, 90, 1, 85], ())
                 .expect("method not found (this should never happen)")
         }
-        #[doc = "Calls the contract's `initFlash` (0xb758ebbf) function"]
-        pub fn init_flash(
-            &self,
-            params: FlashParams,
-        ) -> ethers::contract::builders::ContractCall<M, ()> {
-            self.0
-                .method_hash([183, 88, 235, 191], (params,))
-                .expect("method not found (this should never happen)")
-        }
         #[doc = "Calls the contract's `isAtMinimalPrice` (0x6ee98e5e) function"]
         pub fn is_at_minimal_price(
             &self,
@@ -95,6 +94,23 @@ mod pairflash_mod {
         ) -> ethers::contract::builders::ContractCall<M, bool> {
             self.0
                 .method_hash([110, 233, 142, 94], (vault_id, ilk_id))
+                .expect("method not found (this should never happen)")
+        }
+        #[doc = "Calls the contract's `liquidate` (0x77516039) function"]
+        pub fn liquidate(
+            &self,
+            vault_id: [u8; 12],
+        ) -> ethers::contract::builders::ContractCall<M, ()> {
+            self.0
+                .method_hash([119, 81, 96, 57], vault_id)
+                .expect("method not found (this should never happen)")
+        }
+        #[doc = "Calls the contract's `recipient` (0x66d003ac) function"]
+        pub fn recipient(
+            &self,
+        ) -> ethers::contract::builders::ContractCall<M, ethers::core::types::Address> {
+            self.0
+                .method_hash([102, 208, 3, 172], ())
                 .expect("method not found (this should never happen)")
         }
         #[doc = "Calls the contract's `refundETH` (0x12210e8a) function"]
@@ -143,16 +159,13 @@ mod pairflash_mod {
                 .method_hash([73, 64, 75, 124], (amount_minimum, recipient))
                 .expect("method not found (this should never happen)")
         }
-    }
-    #[doc = "`FlashParams(address,address,uint256,bytes12,bytes6,bytes6,bytes6)`"]
-    #[derive(Clone, Debug, Default, Eq, PartialEq, ethers :: contract :: EthAbiType)]
-    pub struct FlashParams {
-        pub collateral: ethers::core::types::Address,
-        pub debt: ethers::core::types::Address,
-        pub debt_amount: ethers::core::types::U256,
-        pub vault_id: [u8; 12],
-        pub collateral_id: [u8; 6],
-        pub debt_id: [u8; 6],
-        pub series_id: [u8; 6],
+        #[doc = "Calls the contract's `witch` (0xa308e851) function"]
+        pub fn witch(
+            &self,
+        ) -> ethers::contract::builders::ContractCall<M, ethers::core::types::Address> {
+            self.0
+                .method_hash([163, 8, 232, 81], ())
+                .expect("method not found (this should never happen)")
+        }
     }
 }

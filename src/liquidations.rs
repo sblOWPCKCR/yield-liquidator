@@ -3,7 +3,7 @@
 //! This module is responsible for triggering and participating in a Auction's
 //! dutch auction
 use crate::{
-    bindings::{Cauldron, Witch, ArtIdType, SeriesIdType, InkIdType, VaultIdType, PairFlash, FlashParams},
+    bindings::{Cauldron, Witch, ArtIdType, SeriesIdType, InkIdType, VaultIdType, PairFlash},
     borrowers::{Vault},
     escalator::GeometricGasPrice,
     merge, Result,
@@ -293,16 +293,7 @@ impl<M: Middleware> Liquidator<M> {
         let span = debug_span!("buying", vault_id=?vault_id, auction=?auction);
         let _enter = span.enter();
 
-        let args = FlashParams {
-            collateral: auction.collateral_address,
-            debt: auction.debt_address,
-            debt_amount: U256::from(auction.debt),
-            vault_id: vault_id,
-            collateral_id: auction.collateral_id,
-            debt_id: auction.debt_id,
-            series_id: auction.series_id
-        };
-        let call = self.pairflash.init_flash(args)
+        let call = self.pairflash.liquidate(vault_id)
             .gas_price(gas_price)
             .block(BlockNumber::Pending);
 
