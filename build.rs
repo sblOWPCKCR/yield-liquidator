@@ -6,7 +6,7 @@ fn main() {
     println!("cargo:rerun-if-changed=./abi/*.json");
     bindgen("Cauldron");
     bindgen("Witch");
-    bindgen("PairFlash");
+    bindgen("FlashLiquidator");
 }
 
 #[allow(dead_code)]

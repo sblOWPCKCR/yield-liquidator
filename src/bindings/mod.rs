@@ -4,8 +4,8 @@ pub use cauldron::*;
 mod witch;
 pub use witch::*;
 
-mod pairflash;
-pub use pairflash::*;
+mod flashliquidator;
+pub use flashliquidator::*;
 
 pub type VaultIdType = [u8; 12];
 pub type ArtIdType = [u8; 6];
