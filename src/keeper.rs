@@ -201,7 +201,6 @@ impl<M: Middleware> Keeper<M> {
                 }
             }
         }
-        Ok(())
     }
 
     /// Runs the liquidation business logic for the specified block

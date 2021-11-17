@@ -3,7 +3,7 @@
 //! This module is responsible for triggering and participating in a Auction's
 //! dutch auction
 use crate::{
-    bindings::{Cauldron, Witch, ArtIdType, SeriesIdType, InkIdType, VaultIdType, PairFlash},
+    bindings::{Cauldron, Witch, VaultIdType, FlashLiquidator},
     borrowers::{Vault},
     escalator::GeometricGasPrice,
     merge, Result,
@@ -25,7 +25,7 @@ pub type AuctionMap = HashMap<VaultIdType, bool>;
 pub struct Liquidator<M> {
     cauldron: Cauldron<M>,
     liquidator: Witch<M>,
-    pairflash: PairFlash<M>,
+    flash_liquidator: FlashLiquidator<M>,
 
     /// The currently active auctions
     pub auctions: AuctionMap,
@@ -55,19 +55,10 @@ pub struct Auction {
     under_auction: bool,
     /// The debt which can be repaid
     debt: u128,
-    /// The collateral which can be seized
-    collateral: u128,
 
     ratio_pct: u16,
     is_at_minimal_price: bool,
 
-    debt_id: ArtIdType,
-    collateral_id: InkIdType,
-
-    debt_address: Address,
-    collateral_address: Address,
-
-    series_id: SeriesIdType,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -106,7 +97,7 @@ impl<M: Middleware> Liquidator<M> {
         Self {
             cauldron: Cauldron::new(cauldron, client.clone()),
             liquidator: Witch::new(liquidator, client.clone()),
-            pairflash: PairFlash::new(flashloan, client.clone()),
+            flash_liquidator: FlashLiquidator::new(flashloan, client.clone()),
             multicall,
             min_ratio,
             auctions,
@@ -293,7 +284,7 @@ impl<M: Middleware> Liquidator<M> {
         let span = debug_span!("buying", vault_id=?vault_id, auction=?auction);
         let _enter = span.enter();
 
-        let call = self.pairflash.liquidate(vault_id)
+        let call = self.flash_liquidator.liquidate(vault_id)
             .gas_price(gas_price)
             .block(BlockNumber::Pending);
 
@@ -376,44 +367,33 @@ impl<M: Middleware> Liquidator<M> {
     }
 
     async fn get_auction(&mut self, vault_id: VaultIdType) -> Result<Auction, M> {
-        // re-fetch asset ids. we shouldn't be buying too often -> OK to not optimize this
-        // we could pass Borrowers::vaults map to Liquidators to get rid of the extra lookup
-        let asset_ids_fn = self.cauldron.vaults(vault_id);
         let balances_fn = self.cauldron.balances(vault_id);
         let auction_fn = self.liquidator.auctions(vault_id);
 
+        trace!(
+            vault_id=?hex::encode(vault_id),
+            "Fetching auction details"
+        );
+
         let multicall = self
             .multicall
             .clear_calls()
-            .add_call(asset_ids_fn)
             .add_call(balances_fn)
             .add_call(auction_fn)
+            .add_call(self.flash_liquidator.is_at_minimal_price(vault_id))
+            .add_call(self.flash_liquidator.collateral_to_debt_ratio(vault_id))
             ;
 
-        let ((_, series_id, ilk_id), (art, ink), (auction_owner, auction_start)):
-            ((Address, SeriesIdType, InkIdType), (u128, u128), (Address, u32)) = multicall.call().await?;
-
-        let (_, art_id, _) = self.cauldron.series(series_id).call().await?;
+        let ((art, _), (auction_owner, auction_start), is_at_minimal_price, ratio_u256):
+            ((u128, u128), (Address, u32), bool, U256) = multicall.call().await?;
 
         trace!(
             vault_id=?hex::encode(vault_id),
-            ilk_id=?hex::encode(ilk_id),
-            series_id=?hex::encode(series_id),
-            art_id=?hex::encode(art_id),
-            art=?art,
-            "Fetching auction details"
+            debt=?art,
+            ratio=?ratio_u256,
+            is_at_minimal_price=is_at_minimal_price,
+            "Fetched auction details"
         );
-        // resolve asset IDs
-        let multicall = self
-            .multicall
-            .clear_calls()
-            .add_call(self.cauldron.assets(art_id))
-            .add_call(self.cauldron.assets(ilk_id))
-            .add_call(self.pairflash.is_at_minimal_price(vault_id, ilk_id))
-            .add_call(self.pairflash.collateral_to_debt_ratio(vault_id, series_id, art_id, ilk_id, art))
-            ;
-
-        let (art_address, ink_address, is_at_minimal_price, ratio_u256): (Address, Address, bool, U256) = multicall.call().await?;
 
         let ratio_pct_u256 = ratio_u256 / U256::exp10(16);
         let ratio_pct: u16 = {
@@ -428,15 +408,9 @@ impl<M: Middleware> Liquidator<M> {
         Ok(Auction {
             under_auction: (auction_owner != Address::zero()),
             started: auction_start,
-            collateral: ink,
             debt: art,
             ratio_pct: ratio_pct,
             is_at_minimal_price: is_at_minimal_price,
-            debt_id: art_id,
-            collateral_id: ilk_id,
-            debt_address: art_address,
-            collateral_address: ink_address,
-            series_id: series_id,
         })
 
     }
